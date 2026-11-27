@@ -174,3 +174,87 @@ fn a_relative_span_moves_its_own_text_only() {
         },
     );
 }
+
+/// Paginates the document and returns, page by page, the border box top of every `tag` element
+/// on that page (a box split over pages counts on each).
+fn tops_per_page(css: &str, body: &str, tag: &str) -> Vec<Vec<f32>> {
+    let html_src = format!(
+        "<!DOCTYPE html><html><head><style>\
+         @page {{ size: letter; margin: 0.5in }} * {{ margin: 0; padding: 0 }} {css}\
+         </style></head><body>{body}</body></html>"
+    );
+    let dom = html::parse(html_src.as_bytes());
+    let fetcher = ImageFetcher::new(PathBuf::from("."), false);
+    let cache = DocumentImageCache::new();
+    let author = extract_author_stylesheet(&dom, &fetcher, &cache);
+    let styles = compute_styles(&dom, &user_agent_stylesheet(), &author);
+    let fonts = test_fonts();
+    let pages = paginate_document(&dom, &styles, &fonts, &PageSettings::default());
+
+    fn collect(dom: &Dom, id: NodeId, tag: &str, out: &mut Vec<NodeId>) {
+        if let NodeData::Element { name, .. } = &dom.node(id).data {
+            if &*name.local == tag {
+                out.push(id);
+            }
+        }
+        dom.children(id)
+            .for_each(|child| collect(dom, child, tag, out));
+    }
+    fn tops(b: &LaidOutBox, ids: &[NodeId], out: &mut Vec<f32>) {
+        if b.node.is_some_and(|node| ids.contains(&node)) {
+            out.push(b.layout.border_box().y);
+        }
+        if let LaidOutContent::Blocks(children) = &b.content {
+            children.iter().for_each(|child| tops(child, ids, out));
+        }
+    }
+    let mut ids = Vec::new();
+    collect(&dom, dom.document(), tag, &mut ids);
+    pages
+        .iter()
+        .map(|page| {
+            let mut out = Vec::new();
+            page.boxes.iter().for_each(|b| tops(b, &ids, &mut out));
+            out
+        })
+        .collect()
+}
+
+#[test]
+fn a_relative_box_after_a_forced_page_break_keeps_its_offset() {
+    // One label per page, moved down by `top`: each page draws it at the same place.
+    let pages = tops_per_page(
+        "section { position: relative; top: 100px; height: 200px } section + section { break-before: page }",
+        "<section>1</section><section>2</section><section>3</section>",
+        "section",
+    );
+    assert_eq!(pages.len(), 3);
+    assert_eq!(pages[0], vec![100.0]);
+    assert_eq!(pages[1], pages[0], "page 2");
+    assert_eq!(pages[2], pages[0], "page 3");
+}
+
+#[test]
+fn a_relative_box_pushed_to_the_next_page_keeps_its_offset() {
+    // Two boxes do not fit on a letter page (912px of content): the second moves to page 2.
+    let pages = tops_per_page(
+        "section { position: relative; top: 30px; height: 500px }",
+        "<section>1</section><section>2</section>",
+        "section",
+    );
+    assert_eq!(pages.len(), 2);
+    assert_eq!(pages[0], vec![30.0]);
+    assert_eq!(pages[1], vec![30.0]);
+}
+
+#[test]
+fn a_relative_offset_after_a_page_break_does_not_move_the_next_box() {
+    let pages = tops_per_page(
+        "section { height: 200px } .rel { position: relative; top: 100px } .rel { break-before: page }",
+        r#"<section>1</section><section class="rel">2</section><section>3</section>"#,
+        "section",
+    );
+    assert_eq!(pages.len(), 2);
+    // The offset moves the second box only: the third follows it at its place in the flow.
+    assert_eq!(pages[1], vec![100.0, 200.0]);
+}
