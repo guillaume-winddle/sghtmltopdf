@@ -61,7 +61,7 @@
       "alloc_bytes": 52668979,
       "peak_live_bytes": 25290866,
       "pages": 6,
-      "pdf_bytes": 66888
+      "pdf_bytes": 66999
     },
     {
       "name": "engine/batch/table_pagination",
@@ -221,7 +221,7 @@
       "alloc_bytes": 52490839,
       "peak_live_bytes": 24679866,
       "pages": 6,
-      "pdf_bytes": 75546
+      "pdf_bytes": 75668
     },
     {
       "name": "engine/streaming/table_pagination",
