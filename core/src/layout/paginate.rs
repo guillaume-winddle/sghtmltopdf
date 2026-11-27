@@ -723,10 +723,15 @@ fn first_piece_bottom(b: &LaidOutBox, page_height: f32) -> f32 {
     }
 }
 
-/// The absolute Y of the top of `b`'s margin box (its `content.y` minus the margin, border
-/// and padding). Shared by `place_leaf`/`extent_of` and `place_split`'s float branch.
+/// The absolute Y of the top of `b`'s margin box in the flow (its `content.y` minus the margin,
+/// border and padding, and minus a `position: relative` offset, which does not move the flow).
+/// Shared by `place_leaf`/`extent_of` and `place_split`'s float branch.
 fn margin_box_top(b: &LaidOutBox) -> f32 {
-    b.layout.content.y - b.layout.padding.top - b.layout.border.top - b.layout.margin.top
+    b.layout.content.y
+        - b.layout.padding.top
+        - b.layout.border.top
+        - b.layout.margin.top
+        - b.fragmentation.relative_offset_y
 }
 
 /// Whether any box inside `b`'s subtree (block descendants only; inline lines and table

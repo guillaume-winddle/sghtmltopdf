@@ -66,6 +66,10 @@ pub struct FragmentationHints {
     /// box on the page it starts on, even when the box has nothing to paint, so the outline
     /// can find where it is.
     pub bookmarked: bool,
+    /// The vertical offset of `position: relative` already applied to the box's coordinates.
+    /// It moves the box without moving the flow (CSS 2.1 section 9.4.3), so pagination
+    /// subtracts it to find where the box sits in the flow, and the box keeps it on any page.
+    pub relative_offset_y: f32,
 }
 
 impl From<&ComputedStyle> for FragmentationHints {
@@ -77,6 +81,7 @@ impl From<&ComputedStyle> for FragmentationHints {
             orphans: style.orphans,
             widows: style.widows,
             bookmarked: style.bookmark_level.is_some(),
+            relative_offset_y: 0.0,
         }
     }
 }
@@ -1086,6 +1091,7 @@ fn layout_box_impl(
         // The delta of `shift_box_y_in_place` is the amount to subtract, so
         // moving down means `-dy`.
         shift_box_y_in_place(&mut laid, -offset_y);
+        laid.fragmentation.relative_offset_y = offset_y;
     }
     laid
 }
