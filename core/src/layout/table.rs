@@ -4,8 +4,8 @@
 //! "natural width" is measured (in practice, the width of its text laid out on one line with
 //! no wrapping); the maximum natural width per column is taken; and the columns are scaled
 //! proportionally to fit the containing width (scaling up when the containing width is
-//! larger, so the table always fills it, matching the ordinary CSS behaviour of a
-//! `width: auto` table filling its containing block).
+//! larger, so the table fills it). A `width: auto` table is given the width of its columns
+//! (shrink-to-fit, see `resolve_box_geometry`), so its columns get their natural widths.
 //!
 //! - `rowspan="0"` (HTML5's "extend to the end of the section" special value) is not supported and is treated as 1
 //! - `border-collapse: collapse` only unifies how the borders are drawn; the layout
@@ -21,8 +21,9 @@ use std::rc::Rc;
 use crate::fonts::FontCollection;
 use crate::html::NodeId;
 use crate::style::{
-    CaptionSide, ComputedStyle, FlexDirection, LengthPercentage, LengthPercentageOrAuto, MaxSize,
-    RepeatCount, TableLayout, TrackComponent, TrackList, VerticalAlign,
+    BorderCollapse, CaptionSide, ComputedStyle, FlexDirection, LengthPercentage,
+    LengthPercentageOrAuto, MaxSize, RepeatCount, TableLayout, TrackComponent, TrackList,
+    VerticalAlign,
 };
 
 use super::block::resolve_lpa_or_zero;
@@ -814,7 +815,16 @@ fn cell_content_width(
     // The clamp is applied to the content width (min/max are content-box based) and
     // padding/border are added afterwards. The percentage basis for min/max is also unknown
     // at this point, so it too resolves against 0 (the same simplification as padding).
-    let content_natural = measure_content_width(&cell.content, styles, fonts, basis);
+    let pb_x = padding.left + padding.right + border.left + border.right;
+    let mut content_natural = measure_content_width(&cell.content, styles, fonts, basis);
+    // A `width` in px is the cell's max-content width, but never below its min-content
+    // width, as in browsers. A percentage `width` is ignored, its basis being unknown.
+    if basis == Basis::Max {
+        if let Some(px) = definite_lpa_px(style.width) {
+            content_natural = to_content_box_width(&style, pb_x, px)
+                .max(measure_min_content_width(&cell.content, styles, fonts));
+        }
+    }
     let clamped = clamp_used_width(
         &style,
         0.0,
@@ -822,7 +832,7 @@ fn cell_content_width(
         border.left + border.right,
         content_natural,
     );
-    clamped + padding.left + padding.right + border.left + border.right
+    clamped + pb_x
 }
 
 /// One child box's natural or min-content outer width (per `basis`): its content width plus its
@@ -914,7 +924,7 @@ fn declared_column_count(list: &TrackList) -> usize {
 /// * grid: rows are cut at the number of tracks `grid-template-columns` declares, and the
 ///   maximum row sum is taken. `repeat(auto-fill|auto-fit, ...)` counts as one repetition, per the CSS spec.
 ///   Explicit placement (`grid-column`) and items spanning several tracks are not considered
-/// * table: the maximum per row of the sum of the cell widths (`border-spacing` excluded)
+/// * table: the sum of the column widths plus `border-spacing`, no less than the caption
 ///
 /// The result is memoised on [`LayoutBox::natural_width`]. The same subtree is re-measured
 /// from every ancestor level, and again from the throwaway layouts for each candidate width,
@@ -1050,16 +1060,42 @@ fn compute_content_width(
                 })
                 .fold(0.0f32, f32::max)
         }
-        BoxContent::Table(table) => table
-            .rows
-            .iter()
-            .map(|row| {
-                row.cells
-                    .iter()
-                    .map(|cell| cell_content_width(cell, styles, fonts, basis))
-                    .sum::<f32>()
+        BoxContent::Table(table) => {
+            // The widest cell of each column, summed, plus the `border-spacing` around the
+            // columns in the separate model. A column with a `<col>` width in px takes that
+            // width, as in `distribute_with_column_hints`. The caption's min-content width is
+            // a floor (CSS2.1 17.5.2.2, CAPMIN).
+            let style = box_style(b, styles);
+            let (grid, column_count) = build_table_grid(&table.rows);
+            let columns: f32 = column_widths_by(&grid, column_count, |cell| {
+                cell_content_width(cell, styles, fonts, basis)
             })
-            .fold(0.0f32, f32::max),
+            .iter()
+            .enumerate()
+            .map(|(i, width)| {
+                match table
+                    .column_widths
+                    .get(i)
+                    .copied()
+                    .flatten()
+                    .and_then(definite_px)
+                {
+                    Some(hint) => hint,
+                    None => *width,
+                }
+            })
+            .sum();
+            let spacing = if style.border_collapse == BorderCollapse::Collapse || column_count == 0
+            {
+                0.0
+            } else {
+                style.border_spacing_horizontal.0 * (column_count + 1) as f32
+            };
+            let caption = table.caption.as_deref().map_or(0.0, |caption| {
+                outer_content_width(caption, styles, fonts, Basis::Min)
+            });
+            (columns + spacing).max(caption)
+        }
         BoxContent::Image(image_content) => {
             replaced_natural_content_width(&box_style(b, styles), image_content)
         }
@@ -1241,12 +1277,12 @@ mod tests {
     }
 
     #[test]
-    fn table_stretches_to_fill_the_containing_width() {
+    fn table_with_a_width_stretches_to_fill_the_containing_width() {
         // Cancel out body's default margin (from the UA stylesheet) so the containing width
         // reaches the table unchanged.
         let table = layout_table_html(
             "<table><tr><td>a</td><td>bb</td></tr></table>",
-            "body { margin: 0; }",
+            "body { margin: 0; } table { width: 100%; }",
             700.0,
         );
         let super::super::block::LaidOutContent::Table(laid_table) = &table.content else {
@@ -1391,7 +1427,7 @@ mod tests {
             r#"<table style="table-layout: fixed;">
                 <tr><td style="width: 100px;">a</td><td>b</td><td>c</td></tr>
             </table>"#,
-            "body { margin: 0; }",
+            "body { margin: 0; } table { width: 100%; }",
             700.0,
         );
         let widths = cell_widths(&table, 0);
@@ -1421,7 +1457,7 @@ mod tests {
         // Width available to the columns = 700 - 20*3 (column count + 1 gaps) = 640 -> 320px each.
         let table = layout_table_html(
             "<table><tr><td>identical</td><td>identical</td></tr></table>",
-            "body { margin: 0; } table { border-spacing: 20px 0; }",
+            "body { margin: 0; } table { width: 100%; border-spacing: 20px 0; }",
             700.0,
         );
         let widths = cell_widths(&table, 0);
@@ -1821,7 +1857,7 @@ mod tests {
                  <colgroup><col style="width: 100px;"><col></colgroup>
                  <tr><td>a</td><td>bbbbbbbbbbbbbbbb</td></tr>
                </table>"#,
-            "body { margin: 0; } table { border-spacing: 0; }",
+            "body { margin: 0; } table { width: 100%; border-spacing: 0; }",
             500.0,
         );
         let widths = cell_widths(&table, 0);
@@ -1837,7 +1873,7 @@ mod tests {
                  <colgroup><col style="width: 20%;"><col></colgroup>
                  <tr><td>a</td><td>b</td></tr>
                </table>"#,
-            "body { margin: 0; } table { border-spacing: 0; }",
+            "body { margin: 0; } table { width: 100%; border-spacing: 0; }",
             500.0,
         );
         let widths = cell_widths(&table, 0);
@@ -1851,7 +1887,7 @@ mod tests {
                  <colgroup><col span="2" style="width: 50px;"><col></colgroup>
                  <tr><td>a</td><td>b</td><td>c</td></tr>
                </table>"#,
-            "body { margin: 0; } table { border-spacing: 0; }",
+            "body { margin: 0; } table { width: 100%; border-spacing: 0; }",
             500.0,
         );
         let widths = cell_widths(&table, 0);
@@ -1867,7 +1903,7 @@ mod tests {
                  <colgroup span="2" style="width: 60px;"></colgroup>
                  <tr><td>a</td><td>b</td><td>c</td></tr>
                </table>"#,
-            "body { margin: 0; } table { border-spacing: 0; }",
+            "body { margin: 0; } table { width: 100%; border-spacing: 0; }",
             500.0,
         );
         let widths = cell_widths(&table, 0);
@@ -1883,7 +1919,7 @@ mod tests {
                  <colgroup><col style="width: 100px;"><col><col></colgroup>
                  <tr><td>a</td><td>short</td><td>a much much much longer cell</td></tr>
                </table>"#,
-            "body { margin: 0; } table { border-spacing: 0; }",
+            "body { margin: 0; } table { width: 100%; border-spacing: 0; }",
             500.0,
         );
         let widths = cell_widths(&table, 0);
@@ -1904,7 +1940,7 @@ mod tests {
                  <colgroup><col style="width: 600px;"><col style="width: 200px;"></colgroup>
                  <tr><td>a</td><td>b</td></tr>
                </table>"#,
-            "body { margin: 0; } table { border-spacing: 0; }",
+            "body { margin: 0; } table { width: 100%; border-spacing: 0; }",
             400.0,
         );
         let widths = cell_widths(&table, 0);
@@ -1919,7 +1955,7 @@ mod tests {
                  <colgroup><col style="width: 300px;"><col></colgroup>
                  <tr><td style="width: 100px;">a</td><td>b</td></tr>
                </table>"#,
-            "body { margin: 0; } table { table-layout: fixed; border-spacing: 0; }",
+            "body { margin: 0; } table { width: 100%; table-layout: fixed; border-spacing: 0; }",
             500.0,
         );
         let widths = cell_widths(&table, 0);
@@ -1935,7 +1971,7 @@ mod tests {
         // Regression check: with no hints at all, every column is scaled proportionally as before.
         let table = layout_table_html(
             r#"<table><tr><td>a</td><td>a much much much longer cell</td></tr></table>"#,
-            "body { margin: 0; } table { border-spacing: 0; }",
+            "body { margin: 0; } table { width: 100%; border-spacing: 0; }",
             500.0,
         );
         let widths = cell_widths(&table, 0);

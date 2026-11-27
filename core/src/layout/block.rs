@@ -768,6 +768,24 @@ fn resolve_box_geometry(
                 resolve_lpa_or_zero(style.margin_right, containing_width),
             )
         }
+        // A table with `width: auto` is as wide as its columns, up to the containing width
+        // (CSS2.1 section 17.5.2.2), where a block would fill it. The width is then solved
+        // as if it were given, so `margin: auto` still centres the table.
+        None if matches!(b.content, BoxContent::Table(_))
+            && matches!(style.width, LengthPercentageOrAuto::Auto) =>
+        {
+            let padding_lr = padding.left + padding.right;
+            let border_lr = border.left + border.right;
+            let available = (containing_width
+                - resolve_lpa_or_zero(style.margin_left, containing_width)
+                - resolve_lpa_or_zero(style.margin_right, containing_width)
+                - padding_lr
+                - border_lr)
+                .max(0.0);
+            let width = shrink_to_fit_content_width(b, styles, fonts, &style, available);
+            let width = clamp_used_width(&style, containing_width, padding_lr, border_lr, width);
+            solve_horizontal(&style, containing_width, padding_lr, border_lr, Some(width))
+        }
         None => resolve_width_and_horizontal_margins(
             &style,
             containing_width,
