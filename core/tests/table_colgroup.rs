@@ -73,7 +73,7 @@ fn col_widths_shape_an_invoice_like_table() {
              <thead><tr><th>品目</th><th>数量</th><th>単価</th><th>金額</th></tr></thead>
              <tbody><tr><td>サンプル商品</td><td>1</td><td>1,000</td><td>1,000</td></tr></tbody>
            </table>"#,
-        "body { margin: 0; } table { border-spacing: 0; } \
+        "body { margin: 0; } table { width: 100%; border-spacing: 0; } \
          .qty, .price, .amount { width: 80px; }",
     );
 

@@ -21,7 +21,7 @@
       "alloc_bytes": 45658459,
       "peak_live_bytes": 25098514,
       "pages": 3,
-      "pdf_bytes": 42141
+      "pdf_bytes": 42107
     },
     {
       "name": "engine/batch/block_layout",
@@ -181,7 +181,7 @@
       "alloc_bytes": 44973891,
       "peak_live_bytes": 24914371,
       "pages": 3,
-      "pdf_bytes": 42306
+      "pdf_bytes": 42275
     },
     {
       "name": "engine/streaming/block_layout",
