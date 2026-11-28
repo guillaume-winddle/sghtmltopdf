@@ -182,6 +182,7 @@ pub(crate) fn render_with<S: Sink<Error = io::Error>>(
         cover_html,
         toc: toc_settings,
         page_offset: args.page_offset,
+        smart_shrinking: args.enable_smart_shrinking,
     };
 
     let mut engine = Engine::new(engine_options, sink);
