@@ -5013,7 +5013,7 @@ mod tests {
             &Stylesheet::default(),
             &parse_stylesheet("div { word-wrap: anywhere; hyphens: auto; }"),
         );
-        assert_eq!(styles[&div].overflow_wrap, OverflowWrap::BreakWord);
+        assert_eq!(styles[&div].overflow_wrap, OverflowWrap::Anywhere);
         assert_eq!(styles[&div].hyphens, Hyphens::Manual);
     }
 

@@ -170,7 +170,7 @@ pub enum PropertyDeclaration {
     TextOverflow(TextOverflow),
     /// `word-break`.
     WordBreak(WordBreak),
-    /// `overflow-wrap` (also known as `word-wrap`). `anywhere` is treated as `break-word`.
+    /// `overflow-wrap` (also known as `word-wrap`).
     OverflowWrap(OverflowWrap),
     /// `hyphens`. `auto` behaves the same as `manual`.
     Hyphens(Hyphens),
@@ -3180,8 +3180,8 @@ fn parse_overflow_wrap<'i>(input: &mut Parser<'i, '_>) -> Result<OverflowWrap, P
     let ident = input.expect_ident()?.clone();
     Ok(match_ignore_ascii_case! { &ident,
         "normal" => OverflowWrap::Normal,
-        // It differs from `anywhere` only in its effect on min-content width, so they are treated alike.
-        "break-word" | "anywhere" => OverflowWrap::BreakWord,
+        "break-word" => OverflowWrap::BreakWord,
+        "anywhere" => OverflowWrap::Anywhere,
         _ => return Err(input.new_custom_error(())),
     })
 }

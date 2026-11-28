@@ -1,0 +1,1 @@
+`overflow-wrap: anywhere` now counts its break opportunities towards the min-content width, as in browsers, so a table cell holding a long word without spaces wraps it instead of widening the table past the page.
