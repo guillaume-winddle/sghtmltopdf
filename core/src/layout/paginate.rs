@@ -532,6 +532,18 @@ fn place_box(
         return;
     }
 
+    // There is no break opportunity between a box's top edge and its first piece (CSS
+    // Fragmentation 3, section 4.4). When not even that piece fits in what is left of the page,
+    // the box starts on the next one, rather than leaving its top margin, border and padding
+    // alone at the bottom of this one.
+    let first_piece = first_piece_bottom(b, page_height) - margin_box_top(b);
+    if current_page_has_content(state)
+        && *cursor + first_piece > page_height
+        && first_piece <= page_height
+    {
+        new_page(state, cursor);
+    }
+
     // While the children are handed out by `&mut`, the container's own scalar information is kept aside.
     let mut container = SplitContainer::take_from(b);
     match &mut b.content {
