@@ -419,3 +419,32 @@ fn a_split_block_paints_its_decoration_to_the_page_break_and_over_its_declared_h
         "the last fragment should end at the footer top {footer_top}: {last:?}"
     );
 }
+
+#[test]
+fn a_box_whose_first_piece_does_not_fit_starts_on_the_next_page_with_its_padding() {
+    // Labels one page tall minus 7px, each with 22px of padding: the second one starts 7px
+    // above the bottom of page 1. Its padding cannot stay there alone, so it starts on page 2
+    // and its text sits where the text of the first label sits on page 1.
+    let page_height = PageSettings::default().content_height();
+    let label = |n: usize| format!(r#"<div class="label"><div class="row">label {n}</div></div>"#);
+    let pages = paginate(
+        &(1..=3).map(label).collect::<String>(),
+        &format!(
+            "* {{ margin: 0; padding: 0 }} .label {{ padding: 22px; height: {}px }} .row {{ height: 200px }}",
+            page_height - 44.0 - 7.0
+        ),
+    );
+
+    assert_eq!(pages.len(), 3);
+    for (page_index, page) in pages.iter().enumerate() {
+        let lines = text_lines_on_page(page);
+        assert_eq!(lines.len(), 1, "page {page_index}: {lines:?}");
+        assert_eq!(lines[0].0, format!("label {}", page_index + 1));
+        assert!(
+            (lines[0].1 - 22.0).abs() < 0.01,
+            "label {} is {}px below the top of its page, expected its 22px of padding",
+            page_index + 1,
+            lines[0].1
+        );
+    }
+}
