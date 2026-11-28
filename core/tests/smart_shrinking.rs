@@ -10,12 +10,18 @@ use sghtmltopdf::sink::MemorySink;
 
 const FONT_PATH: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fonts/DejaVuSans.ttf");
 
-/// A table that cannot be narrower than about 1500px, on an A4 page whose content area is 602px wide.
-fn wide_table() -> String {
-    let cells: String = (0..14)
+/// A table of `columns` columns that cannot wrap (about 110px each), on an A4 page (794px wide)
+/// whose content area is 602px wide.
+fn wide_table_of(columns: usize) -> String {
+    let cells: String = (0..columns)
         .map(|i| format!(r#"<td style="white-space: nowrap">Column {i} value</td>"#))
         .collect();
     format!("<h1>Wide</h1><table><tr>{cells}</tr></table><p>After the table</p>")
+}
+
+/// About 1000px: it fits once the page is laid out 1.7 times wider.
+fn wide_table() -> String {
+    wide_table_of(9)
 }
 
 fn render(html: &str, smart_shrinking: bool, mode: Mode) -> Result<Vec<u8>, String> {
@@ -38,9 +44,13 @@ fn text(bytes: &[u8]) -> String {
     String::from_utf8_lossy(bytes).into_owned()
 }
 
-fn media_box(pdf: &str) -> &str {
-    let start = pdf.find("/MediaBox [").expect("a MediaBox");
-    &pdf[start..start + pdf[start..].find(']').unwrap()]
+/// The first page's `/MediaBox`, in points.
+fn media_box(pdf: &str) -> Vec<f32> {
+    let start = pdf.find("/MediaBox [").expect("a MediaBox") + "/MediaBox [".len();
+    pdf[start..start + pdf[start..].find(']').unwrap()]
+        .split_whitespace()
+        .map(|n| n.parse().unwrap())
+        .collect()
 }
 
 /// The scale of the first page: the first `s 0 0 s 0 0 cm` of its content.
@@ -73,12 +83,14 @@ fn a_document_wider_than_the_page_is_shrunk_to_fit_the_paper() {
     let on = text(&render(&wide_table(), true, Mode::Batch).unwrap());
 
     // The paper does not change, the scale does.
-    assert_eq!(media_box(&on), media_box(&off));
+    for (on, off) in media_box(&on).iter().zip(media_box(&off)) {
+        assert!((on - off).abs() < 0.01, "paper {on} instead of {off}");
+    }
     assert!((page_scale(&off) - 0.75).abs() < 1e-4);
     let scale = page_scale(&on);
     assert!(
-        scale < 0.75 * 0.5,
-        "the table is over twice the page width: scale {scale}"
+        scale < 0.75 / 1.5 && scale > 0.75 / 2.0,
+        "the table is 1.5 to 2 times the content width: scale {scale}"
     );
 
     // Without it the last columns start past the paper's right edge, with it every text does not.
@@ -90,6 +102,17 @@ fn a_document_wider_than_the_page_is_shrunk_to_fit_the_paper() {
             "text at {x}px drawn past the paper"
         );
     }
+}
+
+#[test]
+fn the_page_is_laid_out_at_most_twice_as_wide_as_the_paper() {
+    // About 2200px of columns: the page is laid out 1588px wide (twice A4) and the rest is cut.
+    let pdf = text(&render(&wide_table_of(20), true, Mode::Batch).unwrap());
+    assert!(
+        (page_scale(&pdf) - 0.75 / 2.0).abs() < 1e-3,
+        "scale {}",
+        page_scale(&pdf)
+    );
 }
 
 #[test]

@@ -233,8 +233,9 @@ pub struct EngineOptions {
     pub deadline: Option<std::time::Instant>,
     /// Shrink the pages whose content is wider than the page area to fit it, as wkhtmltopdf's
     /// smart shrinking does (`--enable-smart-shrinking`). The document is laid out again on a
-    /// page widened to its content, and drawn at the scale that brings it back to the paper
-    /// size. Not available in streaming mode, which writes pages before the whole document is known.
+    /// page widened to its content, at most twice the paper width at 96dpi as in WebKit, and
+    /// drawn at the scale that brings it back to the paper size. Not available in streaming
+    /// mode, which writes pages before the whole document is known.
     pub smart_shrinking: bool,
 }
 
@@ -1443,10 +1444,14 @@ impl<S: Sink> Engine<S> {
             &image_cache,
         );
         if options.smart_shrinking {
+            // Like WebKit, the page is laid out at most twice as wide as the paper at 96dpi;
+            // content wider than that is still cut. `output.scale` is 0.75 at 96dpi and zoom 1.
+            let widest = SMART_SHRINKING_MAX_WIDTH * page_settings.size.width * output.scale / 0.75;
             // Laying the document out wider can widen what fills the width, so measure again,
             // a few times at most.
             for _ in 0..3 {
-                let overflow = content_right_edge(&pages) / page_settings.content_width();
+                let overflow = (content_right_edge(&pages) / page_settings.content_width())
+                    .min(widest / page_settings.size.width);
                 if overflow <= 1.001 {
                     break;
                 }
@@ -1603,6 +1608,10 @@ impl<S: Sink> Engine<S> {
         writer.finish(&fonts).map_err(EngineError::Io)
     }
 }
+
+/// The widest page smart shrinking lays a document out on, as a multiple of the paper width at
+/// 96dpi: WebKit's maximum shrink factor, which wkhtmltopdf's smart shrinking uses.
+const SMART_SHRINKING_MAX_WIDTH: f32 = 2.0;
 
 /// The right edge of the laid-out content furthest to the right on any page, relative to the
 /// left edge of the page area: boxes, table cells, grid and flex items, and the text of lines,
