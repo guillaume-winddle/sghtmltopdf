@@ -634,18 +634,53 @@ fn layout_out_of_flow_child(
             AbsCB::Ancestor { height, .. } => height,
         }
     };
+    // With `top` and `bottom` both set and `height: auto`, the height is what the containing
+    // block leaves between them (CSS 2.1 section 10.6.4), when that block's height is known.
+    let stretched_height = match (has_top && has_bottom, child_style.height, pos.cb_height) {
+        (true, LengthPercentageOrAuto::Auto, Some(cb_height)) => {
+            let padding = resolve_padding(child_style, cb_rect.width);
+            let border = resolve_border(child_style);
+            Some(
+                (cb_height
+                    - top
+                    - bottom
+                    - resolve_lpa_or_zero(child_style.margin_top, cb_rect.width)
+                    - resolve_lpa_or_zero(child_style.margin_bottom, cb_rect.width)
+                    - padding.top
+                    - padding.bottom
+                    - border.top
+                    - border.bottom)
+                    .max(0.0),
+            )
+        }
+        _ => None,
+    };
     let mut float_ctx = FloatContext::new();
-    let mut laid = layout_box_with_forced_width(
-        child,
-        styles,
-        fonts,
-        cb_rect.width,
-        content_width,
-        &mut float_ctx,
-        margin_box_x,
-        margin_box_y,
-        pos,
-    );
+    let mut laid = match stretched_height {
+        Some(height) => layout_box_with_forced_size(
+            child,
+            styles,
+            fonts,
+            cb_rect.width,
+            content_width,
+            height,
+            &mut float_ctx,
+            margin_box_x,
+            margin_box_y,
+            pos,
+        ),
+        None => layout_box_with_forced_width(
+            child,
+            styles,
+            fonts,
+            cb_rect.width,
+            content_width,
+            &mut float_ctx,
+            margin_box_x,
+            margin_box_y,
+            pos,
+        ),
+    };
     pos.cb_height = saved_cb_height;
 
     // A `bottom` setting (with no `top`) is repositioned to align to the bottom once the

@@ -327,3 +327,32 @@ fn an_absolute_inside_an_inline_block_is_not_dropped() {
 
     assert_eq!(absolute_count(html_src, "BADGE"), 1);
 }
+
+#[test]
+fn an_absolute_box_with_top_and_bottom_takes_the_height_between_them() {
+    // The fold line of a label: no height, placed 40px from the top and 30px from the bottom of
+    // a 200px box. CSS 2.1 section 10.6.4 makes it 200 - 40 - 30 = 130px tall.
+    let (_, fold) = find_box_rect(
+        r#"<body><div style="position: relative; height: 200px;">
+          <div style="position: absolute; top: 40px; bottom: 30px; left: 10px;">FOLD</div>
+        </div></body>"#,
+        "FOLD",
+    );
+    assert!((fold.height - 130.0).abs() < 0.01, "height {}", fold.height);
+}
+
+#[test]
+fn the_padding_and_border_of_a_stretched_absolute_box_fit_between_top_and_bottom() {
+    let (_, fold) = find_box_rect(
+        r#"<body><div style="position: relative; height: 200px;">
+          <div style="position: absolute; top: 40px; bottom: 30px; padding: 5px; border: 2px solid;">FOLD</div>
+        </div></body>"#,
+        "FOLD",
+    );
+    // The border box fills the 130px, its content box is 130 - 2 * (5 + 2) = 116px.
+    assert!(
+        (fold.height - 130.0).abs() < 0.01,
+        "border box height {}",
+        fold.height
+    );
+}
