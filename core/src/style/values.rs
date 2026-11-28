@@ -274,14 +274,15 @@ pub enum WordBreak {
 }
 
 /// `overflow-wrap` (also known as `word-wrap`). Adds no break opportunities; it acts as a
-/// fallback for when something "still does not fit even at the start of a line". `anywhere`
-/// is treated as `break-word` (they differ only in their effect on min-content width, a
-/// distinction this engine does not make).
+/// fallback for when something "still does not fit even at the start of a line".
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum OverflowWrap {
     #[default]
     Normal,
     BreakWord,
+    /// Breaks as `break-word` does, but the break opportunities it adds also count towards
+    /// the min-content width, so a table column holding a long word can be narrower than it.
+    Anywhere,
 }
 
 /// `hyphens`. `auto` behaves as `manual` because we have no dictionary (breaking only at a

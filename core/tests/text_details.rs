@@ -46,6 +46,11 @@ fn find_laid_out(b: &LaidOutBox, target: NodeId) -> Option<&LaidOutBox> {
             .iter()
             .flat_map(|row| &row.items)
             .find_map(|item| find_laid_out(item, target)),
+        LaidOutContent::Table(table) => table
+            .rows
+            .iter()
+            .flat_map(|row| &row.cells)
+            .find_map(|cell| find_laid_out(cell, target)),
         _ => None,
     }
 }
@@ -192,6 +197,57 @@ fn overflow_wrap_keeps_short_words_intact() {
     let lines = lines_of_first_p("<p>alpha beta gamma</p>", css);
     assert_eq!(lines.len(), 1);
     assert_eq!(line_text(&lines[0]), "alpha beta gamma");
+}
+
+/// The lines of a long word in the second cell of a 300px wide table, the first cell taking
+/// 100px, with `overflow-wrap: <value>` on the word.
+fn lines_of_a_long_word_in_a_table_cell(value: &str) -> Vec<LineBox> {
+    let css = format!(
+        "body {{ margin: 0; }} table {{ width: 300px; }} td.label {{ width: 100px; }} \
+         p {{ margin: 0; overflow-wrap: {value}; }}"
+    );
+    lines_of_first_p(
+        r#"<table><tr><td class="label">SPCB</td><td><p>{"12384030":1,"12384031":1,"12384032":1,"12384033":1,"12384034":1}</p></td></tr></table>"#,
+        &css,
+    )
+}
+
+#[test]
+fn overflow_wrap_anywhere_lets_a_table_cell_be_narrower_than_a_long_word() {
+    // The break opportunities `anywhere` adds count towards the cell's min-content width, so
+    // the column keeps its share of the table and the word wraps inside it.
+    let lines = lines_of_a_long_word_in_a_table_cell("anywhere");
+    assert!(lines.len() > 1, "the word should wrap in its cell");
+    let joined: String = lines.iter().map(line_text).collect();
+    assert_eq!(
+        joined,
+        r#"{"12384030":1,"12384031":1,"12384032":1,"12384033":1,"12384034":1}"#
+    );
+    for line in &lines {
+        assert!(
+            line.rect.x + line.rect.width <= 300.0 + 0.5,
+            "a line ends at {} past the table",
+            line.rect.x + line.rect.width
+        );
+    }
+}
+
+#[test]
+fn overflow_wrap_break_word_does_not_make_a_table_cell_narrower_than_a_long_word() {
+    // `break-word` adds nothing to the min-content width: the column widens to the whole
+    // word, which stays on one line, as in browsers.
+    assert_eq!(lines_of_a_long_word_in_a_table_cell("break-word").len(), 1);
+}
+
+#[test]
+fn overflow_wrap_anywhere_splits_a_word_that_does_not_fit_like_break_word() {
+    let css = "body { margin: 0; } p { width: 60px; overflow-wrap: anywhere; }";
+    let lines = lines_of_first_p("<p>abcdefghijklmnopqrstuvwxyz</p>", css);
+    assert!(lines.len() > 1);
+    let joined: String = lines.iter().map(line_text).collect();
+    assert_eq!(joined, "abcdefghijklmnopqrstuvwxyz");
+    let short = lines_of_first_p("<p>alpha beta gamma</p>", &css.replace("60px", "200px"));
+    assert_eq!(short.len(), 1, "a word that fits is not split");
 }
 
 /// The width `text` takes on one line of a `<p>` styled with `p_css`.
