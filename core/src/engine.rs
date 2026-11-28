@@ -32,7 +32,7 @@ use crate::html::{
 use crate::img::{DocumentImageCache, ImageFetcher};
 use crate::layout::{
     paginate_document, paginate_document_with_absolutes, resolve_background_images, EdgeSizes,
-    LaidOutBox, LaidOutContent, PageSettings, Rect,
+    LaidOutBox, LaidOutContent, Page, PageSettings, Rect,
 };
 use crate::pdf::{
     anchor_destination_name, collect_tag_roles, Bookmark, ImageAssetCache, LinkSettings,
@@ -231,6 +231,12 @@ pub struct EngineOptions {
     /// It is checked per chunk fed, per top-level element and per page written. It never
     /// looks inside a single layout call, so an overrun is noticed at worst one such interval late.
     pub deadline: Option<std::time::Instant>,
+    /// Shrink the pages whose content is wider than the page area to fit it, as wkhtmltopdf's
+    /// smart shrinking does (`--enable-smart-shrinking`). The document is laid out again on a
+    /// page widened to its content, at most twice the paper width at 96dpi as in WebKit, and
+    /// drawn at the scale that brings it back to the paper size. Not available in streaming
+    /// mode, which writes pages before the whole document is known.
+    pub smart_shrinking: bool,
 }
 
 /// The permission settings for local file references.
@@ -1276,6 +1282,12 @@ impl<S: Sink> Engine<S> {
         // `find_base_href` below, which recurses). Parsing itself is arena-based and safe at any depth.
         self.ensure_depth_within_limit()?;
         self.check_deadline()?;
+        if self.options.mode == Mode::Streaming && self.options.smart_shrinking {
+            return Err(EngineError::UnsupportedInStreamingMode(
+                "--enable-smart-shrinking needs the whole document laid out before the first page\n  \
+                 is written. To use it, drop --streaming",
+            ));
+        }
         if self.options.mode == Mode::Streaming && self.parser.has_late_css_source() {
             return Err(EngineError::UnsupportedInStreamingMode(
                 "a <style>/<link rel=stylesheet> after <body> cannot be used in streaming mode\n  \
@@ -1423,13 +1435,37 @@ impl<S: Sink> Engine<S> {
 
         // For the cover and TOC, the body's pages are settled before the writer is created,
         // because the anchor names assigned automatically to headings have to go into `LinkSettings`.
-        let pages = paginate_document_with_absolutes(
+        let mut page_settings = page_settings;
+        let mut pages = paginate_document_with_absolutes(
             &mut dom,
             &styles,
             &fonts,
             &page_settings,
             &image_cache,
         );
+        if options.smart_shrinking {
+            // Like WebKit, the page is laid out at most twice as wide as the paper at 96dpi;
+            // content wider than that is still cut. `output.scale` is 0.75 at 96dpi and zoom 1.
+            let widest = SMART_SHRINKING_MAX_WIDTH * page_settings.size.width * output.scale / 0.75;
+            // Laying the document out wider can widen what fills the width, so measure again,
+            // a few times at most.
+            for _ in 0..3 {
+                let overflow = (content_right_edge(&pages) / page_settings.content_width())
+                    .min(widest / page_settings.size.width);
+                if overflow <= 1.001 {
+                    break;
+                }
+                page_settings = scaled_page_settings(&page_settings, overflow);
+                output.scale /= overflow;
+                pages = paginate_document_with_absolutes(
+                    &mut dom,
+                    &styles,
+                    &fonts,
+                    &page_settings,
+                    &image_cache,
+                );
+            }
+        }
 
         // Collecting the headings for the table of contents. A heading with no `id` is given
         // an automatic destination name, which is added to `anchor_names`.
@@ -1571,6 +1607,66 @@ impl<S: Sink> Engine<S> {
 
         writer.finish(&fonts).map_err(EngineError::Io)
     }
+}
+
+/// The widest page smart shrinking lays a document out on, as a multiple of the paper width at
+/// 96dpi: WebKit's maximum shrink factor, which wkhtmltopdf's smart shrinking uses.
+const SMART_SHRINKING_MAX_WIDTH: f32 = 2.0;
+
+/// The right edge of the laid-out content furthest to the right on any page, relative to the
+/// left edge of the page area: boxes, table cells, grid and flex items, and the text of lines,
+/// which can run past their box (`white-space: nowrap`, an unbreakable word).
+fn content_right_edge(pages: &[Page]) -> f32 {
+    fn walk(b: &LaidOutBox, edge: &mut f32) {
+        let border_box = b.layout.border_box();
+        if border_box.width > 0.0 {
+            *edge = edge.max(border_box.x + border_box.width);
+        }
+        match &b.content {
+            LaidOutContent::Blocks(children) | LaidOutContent::Flex(children) => {
+                children.iter().for_each(|child| walk(child, edge));
+            }
+            LaidOutContent::Inline(lines) => {
+                for line in lines {
+                    for run in &line.runs {
+                        *edge = edge.max(line.rect.x + run.x_offset + run.width);
+                    }
+                }
+            }
+            LaidOutContent::Table(table) => {
+                table.caption.iter().for_each(|caption| walk(caption, edge));
+                for cell in table.rows.iter().flat_map(|row| &row.cells) {
+                    walk(cell, edge);
+                }
+            }
+            LaidOutContent::Grid(grid) => {
+                for item in grid.rows.iter().flat_map(|row| &row.items) {
+                    walk(item, edge);
+                }
+            }
+            LaidOutContent::Image(_) => {}
+        }
+    }
+    let mut edge = 0.0f32;
+    for page in pages {
+        page.boxes.iter().for_each(|b| walk(b, &mut edge));
+    }
+    edge
+}
+
+/// `settings` with the page and its margins `factor` times larger, so that drawn at `1 / factor`
+/// of the scale the page keeps its paper size.
+fn scaled_page_settings(settings: &PageSettings, factor: f32) -> PageSettings {
+    let mut scaled = *settings;
+    scaled.size.width *= factor;
+    scaled.size.height *= factor;
+    scaled.margin = EdgeSizes {
+        top: settings.margin.top * factor,
+        right: settings.margin.right * factor,
+        bottom: settings.margin.bottom * factor,
+        left: settings.margin.left * factor,
+    };
+    scaled
 }
 
 /// Return the `PageSettings` with the `size`/`margin` declarations of the `@page` rules

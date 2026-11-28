@@ -76,7 +76,6 @@ const REASONS: &[Reason] = &[
                   concept of a viewport)",
         options: &[
             "--disable-smart-shrinking",
-            "--enable-smart-shrinking",
             "--viewport-size",
             "--lowquality",
             "--print-media-type",

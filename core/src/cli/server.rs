@@ -37,6 +37,7 @@ const ALLOWED_QUERY_KEYS: &[&str] = &[
     "no-images",
     "no-pdf-compression",
     "tagged",
+    "enable-smart-shrinking",
     // PDF metadata
     "title",
     "author",
