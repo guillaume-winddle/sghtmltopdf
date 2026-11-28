@@ -1450,8 +1450,9 @@ impl<S: Sink> Engine<S> {
             // Laying the document out wider can widen what fills the width, so measure again,
             // a few times at most.
             for _ in 0..3 {
-                let overflow = (content_right_edge(&pages) / page_settings.content_width())
-                    .min(widest / page_settings.size.width);
+                let overflow = (content_right_edge(&pages, &styles)
+                    / page_settings.content_width())
+                .min(widest / page_settings.size.width);
                 if overflow <= 1.001 {
                     break;
                 }
@@ -1615,13 +1616,21 @@ const SMART_SHRINKING_MAX_WIDTH: f32 = 2.0;
 
 /// The right edge of the laid-out content furthest to the right on any page, relative to the
 /// left edge of the page area: boxes, table cells, grid and flex items, and the text of lines,
-/// which can run past their box (`white-space: nowrap`, an unbreakable word).
-fn content_right_edge(pages: &[Page]) -> f32 {
-    fn walk(b: &LaidOutBox, edge: &mut f32) {
+/// which can run past their box (`white-space: nowrap`, an unbreakable word). What a box with
+/// `overflow` other than `visible` clips is not drawn past it, so only that box counts.
+fn content_right_edge(pages: &[Page], styles: &HashMap<NodeId, Rc<ComputedStyle>>) -> f32 {
+    fn walk(b: &LaidOutBox, styles: &HashMap<NodeId, Rc<ComputedStyle>>, edge: &mut f32) {
         let border_box = b.layout.border_box();
         if border_box.width > 0.0 {
             *edge = edge.max(border_box.x + border_box.width);
         }
+        if b.node
+            .and_then(|node| styles.get(&node))
+            .is_some_and(|style| style.overflow.clips())
+        {
+            return;
+        }
+        let walk = |child: &LaidOutBox, edge: &mut f32| walk(child, styles, edge);
         match &b.content {
             LaidOutContent::Blocks(children) | LaidOutContent::Flex(children) => {
                 children.iter().for_each(|child| walk(child, edge));
@@ -1649,7 +1658,7 @@ fn content_right_edge(pages: &[Page]) -> f32 {
     }
     let mut edge = 0.0f32;
     for page in pages {
-        page.boxes.iter().for_each(|b| walk(b, &mut edge));
+        page.boxes.iter().for_each(|b| walk(b, styles, &mut edge));
     }
     edge
 }

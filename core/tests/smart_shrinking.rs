@@ -116,6 +116,15 @@ fn the_page_is_laid_out_at_most_twice_as_wide_as_the_paper() {
 }
 
 #[test]
+fn content_clipped_by_its_box_does_not_shrink_the_page() {
+    // The wide table sits in a box that clips it: nothing is drawn past the page area.
+    let html = format!(r#"<div style="overflow: hidden">{}</div>"#, wide_table());
+    let off = text(&render(&html, false, Mode::Batch).unwrap());
+    let on = text(&render(&html, true, Mode::Batch).unwrap());
+    assert_eq!(page_scale(&on), page_scale(&off));
+}
+
+#[test]
 fn a_document_that_fits_is_not_shrunk() {
     let html = "<h1>Narrow</h1><table><tr><td>a</td><td>b</td></tr></table>";
     let off = text(&render(html, false, Mode::Batch).unwrap());
