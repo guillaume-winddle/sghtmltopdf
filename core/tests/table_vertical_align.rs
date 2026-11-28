@@ -101,14 +101,19 @@ fn vertical_align_bottom_pushes_shorter_cell_content_down_end_to_end() {
     let short_cell = find_laid_out(&laid, tds[0]).expect("short cell not found");
     let tall_cell = find_laid_out(&laid, tds[1]).expect("tall cell not found");
 
-    assert!(
-        first_line_y(tall_cell).abs() < 0.5,
-        "the tallest cell's own content should not shift"
-    );
-    assert!(
-        (first_line_y(short_cell) - 70.0).abs() < 0.5,
-        "the shorter cell's content should be pushed down to the bottom (deficit=70px)"
-    );
+    // A cell height is a minimum: both cells are 80px tall and put their one line at the
+    // bottom, as browsers do.
+    let LaidOutContent::Inline(lines) = &short_cell.content else {
+        panic!("expected inline content");
+    };
+    let expected = 80.0 - lines[0].rect.height;
+    for cell in [short_cell, tall_cell] {
+        assert!(
+            (first_line_y(cell) - expected).abs() < 0.5,
+            "the line should sit at the bottom of the 80px row ({expected}): {}",
+            first_line_y(cell)
+        );
+    }
 
     let dom = html::parse(html_src.as_bytes());
     let ua = user_agent_stylesheet();

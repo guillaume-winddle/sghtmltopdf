@@ -305,15 +305,20 @@ pub(super) fn layout_table(
                 0.0
             };
             let deficit = final_height - cell.layout.margin_box_height();
-            if deficit <= 0.0 {
+            if deficit > 0.0 {
+                cell.layout.content.height += deficit;
+            }
+            // The space to distribute is between the cell's content and its content box: a
+            // `height` on the cell is a minimum that makes the box taller than its content.
+            let free = cell.layout.content.height - content_extent(cell);
+            if free <= 0.0 {
                 continue;
             }
-            cell.layout.content.height += deficit;
 
             let shift_down = match cell_vertical_align(cell, styles) {
                 VerticalAlign::Top => 0.0,
-                VerticalAlign::Middle => deficit / 2.0,
-                VerticalAlign::Bottom => deficit,
+                VerticalAlign::Middle => free / 2.0,
+                VerticalAlign::Bottom => free,
                 // `sub`/`super`/`text-top`/`text-bottom` and lengths are inline-context-only
                 // values and do not apply to a table cell in CSS2.1. They are treated as
                 // `baseline`.
@@ -326,7 +331,7 @@ pub(super) fn layout_table(
                     Some(own_offset) => row_baseline_offset - own_offset,
                     // Cell content that cannot provide a baseline falls back to the
                     // equivalent of `bottom` (a known simplification; see the comment at the top of this file).
-                    None => deficit,
+                    None => free,
                 },
             };
             if shift_down > 0.0 {
@@ -426,6 +431,27 @@ fn collapsed_boundaries(
 }
 
 /// The computed `vertical-align` of the cell (`display: table-cell`) itself.
+/// The height of a cell's content (its lines or child boxes), which is less than its content box
+/// when the cell has a `height`.
+fn content_extent(cell: &LaidOutBox) -> f32 {
+    match &cell.content {
+        LaidOutContent::Inline(lines) => lines.iter().map(|line| line.rect.height).sum(),
+        LaidOutContent::Blocks(children) => children
+            .iter()
+            .filter(|child| !child.is_float)
+            .map(|child| {
+                child.layout.content.y
+                    + child.layout.content.height
+                    + child.layout.padding.bottom
+                    + child.layout.border.bottom
+                    + child.layout.margin.bottom
+                    - cell.layout.content.y
+            })
+            .fold(0.0f32, f32::max),
+        _ => cell.layout.content.height,
+    }
+}
+
 fn cell_vertical_align(
     cell: &LaidOutBox,
     styles: &HashMap<NodeId, Rc<ComputedStyle>>,
@@ -1215,6 +1241,13 @@ mod tests {
         &laid_table.rows[row].cells
     }
 
+    fn first_line_height(cell: &LaidOutBox) -> f32 {
+        let super::super::block::LaidOutContent::Inline(lines) = &cell.content else {
+            panic!("expected inline content");
+        };
+        lines[0].rect.height
+    }
+
     fn first_line_y(cell: &LaidOutBox) -> f32 {
         let super::super::block::LaidOutContent::Inline(lines) = &cell.content else {
             panic!("expected inline content");
@@ -1576,16 +1609,16 @@ mod tests {
             700.0,
         );
         let cells = row_cells(&table, 0);
-        assert!(
-            first_line_y(&cells[1]).abs() < 0.5,
-            "the tallest cell defines the row height so its own content shouldn't shift: {}",
-            first_line_y(&cells[1])
-        );
-        assert!(
-            (first_line_y(&cells[0]) - 70.0).abs() < 0.5,
-            "the shorter cell's content should be pushed down by the full deficit(80-10=70px): {}",
-            first_line_y(&cells[0])
-        );
+        // A cell height is a minimum: both cells are 80px tall and put their one line at the
+        // bottom, as browsers do.
+        let expected = 80.0 - first_line_height(&cells[0]);
+        for cell in cells {
+            assert!(
+                (first_line_y(cell) - expected).abs() < 0.5,
+                "the line should sit at the bottom of the 80px row ({expected}): {}",
+                first_line_y(cell)
+            );
+        }
     }
 
     #[test]
@@ -1598,16 +1631,16 @@ mod tests {
             700.0,
         );
         let cells = row_cells(&table, 0);
-        assert!(
-            first_line_y(&cells[1]).abs() < 0.5,
-            "the tallest cell defines the row height so its own content shouldn't shift: {}",
-            first_line_y(&cells[1])
-        );
-        assert!(
-            (first_line_y(&cells[0]) - 35.0).abs() < 0.5,
-            "the shorter cell's content should be pushed down by half the deficit((80-10)/2=35px): {}",
-            first_line_y(&cells[0])
-        );
+        // A cell height is a minimum: both cells are 80px tall and centre their one line in it,
+        // as browsers do.
+        let expected = (80.0 - first_line_height(&cells[0])) / 2.0;
+        for cell in cells {
+            assert!(
+                (first_line_y(cell) - expected).abs() < 0.5,
+                "the line should be centred in the 80px row ({expected}): {}",
+                first_line_y(cell)
+            );
+        }
     }
 
     #[test]
@@ -1655,16 +1688,17 @@ mod tests {
             700.0,
         );
         let cells = row_cells(&table, 0);
-        let nested_top_y = find_nested_table(&cells[1])
+        let nested_cell = find_nested_table(&cells[1])
             .expect("expected the outer cell to contain a nested table")
             .rows[0]
             .cells[0]
             .layout
-            .border_box()
-            .y;
+            .border_box();
+        let expected = 80.0 - nested_cell.height;
         assert!(
-            (nested_top_y - 70.0).abs() < 0.5,
-            "content without a baseline should fall back to bottom alignment (deficit=80-10=70px): {nested_top_y}"
+            (nested_cell.y - expected).abs() < 0.5,
+            "content without a baseline should fall back to bottom alignment ({expected}): {}",
+            nested_cell.y
         );
     }
 
