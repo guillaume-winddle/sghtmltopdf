@@ -585,13 +585,22 @@ fn layout_inline_content_in_flow(
             // start of a line is cut character by character to whatever fits and then
             // broken. When not even one character fits (an extremely narrow band) it is
             // placed as-is and allowed to overflow, to avoid an infinite loop.
+            // `anywhere` instead puts one character per line then, so that at min-content
+            // (a zero width) its widest character, not the whole word, sets the width.
             if starting_new_line
                 && allow_break_fallback
-                && overflow_wrap == OverflowWrap::BreakWord
+                && overflow_wrap != OverflowWrap::Normal
                 && white_space != WhiteSpace::Nowrap
                 && chunk_width > line_available_width + LINE_FIT_EPSILON
             {
                 let (head, rest) = split_chunk_to_fit(chunk, line_available_width);
+                let (head, rest) = match rest.first().and_then(|run| run.glyphs.first()) {
+                    Some(glyph) if head.is_empty() && overflow_wrap == OverflowWrap::Anywhere => {
+                        let first_width = glyph.x_advance + rest[0].letter_spacing;
+                        split_chunk_to_fit(rest, first_width)
+                    }
+                    _ => (head, rest),
+                };
                 if !head.is_empty() && !rest.is_empty() {
                     // The first half is processed as a chunk that "will not be split further",
                     // and the rest goes back through the splitting decision on the next line.

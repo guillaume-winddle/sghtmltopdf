@@ -99,7 +99,7 @@
 | `text-shadow` | ⚠️ | `none \| <shadow>#`(`<offset-x> <offset-y> <blur>? <color>?`)。PDFにぼかしフィルタが無いため、blurはアルファを下げた多重描画による近似。継承プロパティ |
 | `text-overflow` | ⚠️ | `clip`/`ellipsis`。`overflow`が`visible`以外のときのみ有効。幅方向にはみ出した行のみが対象(ブロック全体のオーバーフローは扱わない)。`<string>`指定は非対応 |
 | `word-break` | ✅ | `normal`(CJK文字が隣接する境界のみ改行可)/`break-all`/`keep-all`。非推奨値`break-word`は非対応 |
-| `overflow-wrap` / `word-wrap` | ⚠️ | `normal`/`break-word`/`anywhere`(`anywhere`は`break-word`と同一視)。改行機会は増やさず、行頭に置いても収まらない語だけを文字単位で割る |
+| `overflow-wrap` / `word-wrap` | ⚠️ | `normal`/`break-word`/`anywhere`。改行機会は増やさず、行頭に置いても収まらない語だけを文字単位で割る。`anywhere`はその割り位置を最小内容幅にも数えるので、長い語を含む表のセルが語より狭くなれる |
 | `hyphens` | ⚠️ | `none`/`manual`/`auto`。soft hyphen(U+00AD)でのみ分割し、分割時に行末へハイフンを表示する。`auto`は辞書を持たないため`manual`と同じ挙動(自動ハイフネーションはしない) |
 | `text-emphasis` / `-style` / `-color` / `-position` | ⚠️ | `dot`/`circle`/`double-circle`/`triangle`/`sesame`(`filled`/`open`)と`<string>`。キーワードのマークはPDFのパスで描くためフォントの字形に依存しない(`<string>`はグリフ描画で、字形が無ければ描かれない)。`position`は`over`/`under`のみ(`right`/`left`は読み飛ばし)。マーク分だけ行の高さが広がる。句読点をスキップする`text-emphasis-skip`は非対応 |
 | `letter-spacing` | ⚠️ | `normal`/`<length>`。パーセンテージは非対応 |
