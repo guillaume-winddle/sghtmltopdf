@@ -101,7 +101,7 @@
       "alloc_bytes": 53344621,
       "peak_live_bytes": 25489635,
       "pages": 11,
-      "pdf_bytes": 47659
+      "pdf_bytes": 47697
     },
     {
       "name": "engine/batch/style_engine",
@@ -121,7 +121,7 @@
       "alloc_bytes": 41655725,
       "peak_live_bytes": 24274962,
       "pages": 7,
-      "pdf_bytes": 38686
+      "pdf_bytes": 38695
     },
     {
       "name": "engine/batch/fonts",
@@ -131,7 +131,7 @@
       "alloc_bytes": 47924473,
       "peak_live_bytes": 24839811,
       "pages": 5,
-      "pdf_bytes": 87743
+      "pdf_bytes": 87742
     },
     {
       "name": "engine/batch/real_receipt",
@@ -251,7 +251,7 @@
       "alloc_bytes": 51919913,
       "peak_live_bytes": 24341572,
       "pages": 11,
-      "pdf_bytes": 47662
+      "pdf_bytes": 47697
     },
     {
       "name": "engine/streaming/style_engine",
@@ -271,7 +271,7 @@
       "alloc_bytes": 41802107,
       "peak_live_bytes": 24082024,
       "pages": 7,
-      "pdf_bytes": 38686
+      "pdf_bytes": 38695
     },
     {
       "name": "engine/streaming/fonts",
@@ -281,7 +281,7 @@
       "alloc_bytes": 47500907,
       "peak_live_bytes": 24434452,
       "pages": 5,
-      "pdf_bytes": 87743
+      "pdf_bytes": 87742
     },
     {
       "name": "engine/streaming/real_invoice",
@@ -491,7 +491,7 @@
       "alloc_bytes": 0,
       "peak_live_bytes": 0,
       "pages": 23,
-      "pdf_bytes": 176532
+      "pdf_bytes": 176524
     },
     {
       "name": "cli/report_header_footer_html",
