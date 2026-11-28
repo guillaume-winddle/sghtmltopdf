@@ -265,6 +265,11 @@ pub struct ConvertArgs {
     #[arg(long, action = ArgAction::SetTrue)]
     pub no_pdf_compression: bool,
 
+    /// Shrink a page whose content is wider than the page area to fit it, as wkhtmltopdf's smart
+    /// shrinking does (not available with --streaming)
+    #[arg(long, action = ArgAction::SetTrue)]
+    pub enable_smart_shrinking: bool,
+
     /// Write a tagged PDF: a structure tree for screen readers, with headers, footers and
     /// backgrounds marked as artifacts (not available with --streaming)
     #[arg(long, action = ArgAction::SetTrue)]

@@ -104,7 +104,8 @@ PDFのアウトライン(ブックマーク)自体が非対応のため、この
 | `--print-media-type` / `--no-print-media-type` | ❌ 非対応 | 常に印刷メディア扱い |
 | `-p, --proxy <proxy>` / `--proxy-hostname-lookup` | ❌ 非対応 | プロキシ非対応 |
 | `--run-script <js>` | ❌ 非対応 | JS非対応 |
-| `--disable-smart-shrinking` / `--enable-smart-shrinking` | ❌ 非対応 | WebKit固有の縮小戦略 |
+| `--enable-smart-shrinking` | ✅ 対応 | ページ幅を超える内容をページに収まるよう縮小（`--streaming`とは併用不可） |
+| `--disable-smart-shrinking` | ❌ 非対応 | 既定で縮小しないため不要 |
 | `--ssl-crt-path` / `--ssl-key-password` / `--ssl-key-path` | ❌ 非対応 | クライアント証明書はスコープ外 |
 | `--stop-slow-scripts` / `--no-stop-slow-scripts` | ❌ 非対応 | JS非対応 |
 | `--disable-toc-back-links` / `--enable-toc-back-links` | ✅ 対応 | 見出し→目次への逆リンク |
