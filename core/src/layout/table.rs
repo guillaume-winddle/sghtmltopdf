@@ -592,6 +592,12 @@ fn compute_fixed_column_widths(
 
     let specified_sum: f32 = widths.iter().filter_map(|w| *w).sum();
     let auto_count = widths.iter().filter(|w| w.is_none()).count();
+    // Every column has a width and they leave room: the table is wider than its columns, so
+    // the extra space goes to them, in proportion to their widths (CSS2.1 17.5.2.1).
+    if auto_count == 0 && specified_sum > 0.0 && specified_sum < containing_width {
+        let scale = containing_width / specified_sum;
+        return widths.iter().map(|w| w.unwrap_or(0.0) * scale).collect();
+    }
     let remaining = (containing_width - specified_sum).max(0.0);
     let auto_share = if auto_count > 0 {
         remaining / auto_count as f32
@@ -1471,9 +1477,26 @@ mod tests {
     }
 
     #[test]
+    fn table_layout_fixed_spreads_the_extra_width_over_columns_that_all_have_one() {
+        // Three 33% columns leave 1% of the table: it is spread over them in proportion to
+        // their widths (CSS2.1 17.5.2.1), so they fill the table as in browsers.
+        let table = layout_table_html(
+            r#"<table style="table-layout: fixed; width: 600px;">
+                <tr><td style="width: 33%;">a</td><td style="width: 33%;">b</td><td style="width: 33%;">c</td></tr>
+            </table>"#,
+            "body { margin: 0; } table { border-spacing: 0; }",
+            700.0,
+        );
+        let widths = cell_widths(&table, 0);
+        for w in &widths {
+            assert!((w - 200.0).abs() < 0.5, "widths: {widths:?}");
+        }
+    }
+
+    #[test]
     fn table_layout_fixed_splits_a_colspan_width_evenly_across_spanned_columns() {
         let table = layout_table_html(
-            r#"<table style="table-layout: fixed;">
+            r#"<table style="table-layout: fixed; width: 400px;">
                 <tr><td colspan="2" style="width: 400px;">a</td></tr>
             </table>"#,
             "",
